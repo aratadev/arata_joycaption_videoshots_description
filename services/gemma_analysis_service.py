@@ -15,18 +15,22 @@ from ..utils.models import (
 )
 from ..utils.path_utils import (
     build_file_signature,
+    build_model_path_signature,
     build_resume_cache_key,
     discover_video_files,
     ensure_directory,
+    resolve_model_path,
     resolve_source_path,
 )
 from ..utils.video_metadata import probe_video_metadata
 from ..utils.video_sampling import VideoFrameSample, sample_video_frames
 
 PROMPT_VERSION = "gemma-shot-description-v1"
+DEFAULT_GEMMA_4_MODEL_ID = "google/gemma-4-E4B-it"
+DEFAULT_GEMMA_4_MODEL_PATH = "gemma/google-gemma-4-E4B-it"
 
 GEMMA_4_MODEL_IDS = [
-    "google/gemma-4-E4B-it",
+    DEFAULT_GEMMA_4_MODEL_ID,
     "google/gemma-4-E2B-it",
     "google/gemma-4-26B-A4B-it",
     "google/gemma-4-31B-it",
@@ -65,7 +69,7 @@ class GemmaDescriptionBackend(Protocol):
         ...
 
 
-BackendFactory = Callable[[str, str, int], GemmaDescriptionBackend]
+BackendFactory = Callable[[str, Path, str, int], GemmaDescriptionBackend]
 MetadataProbe = Callable[[str], VideoMetadata]
 FrameSampler = Callable[[str, VideoMetadata], tuple[VideoFrameSample, ...]]
 
@@ -74,6 +78,8 @@ FrameSampler = Callable[[str, VideoMetadata], tuple[VideoFrameSample, ...]]
 class _ProcessContext:
     source_path: Path
     model_id: str
+    model_path: Path
+    model_path_signature: str
     device: str
     visual_token_budget: int
     output_language: str
@@ -99,12 +105,16 @@ class GemmaShotAnalysisService:
         device: str,
         visual_token_budget: int,
         output_language: str = "Russian",
+        model_path: str = DEFAULT_GEMMA_4_MODEL_PATH,
     ) -> GemmaShotDescriptionResult:
         resolved_source = resolve_source_path(source_path)
         video_paths = discover_video_files(resolved_source)
+        resolved_model_path = resolve_model_path(model_path or DEFAULT_GEMMA_4_MODEL_PATH)
         context = _ProcessContext(
             source_path=resolved_source,
-            model_id=str(model_id or "google/gemma-4-E4B-it"),
+            model_id=str(model_id or DEFAULT_GEMMA_4_MODEL_ID),
+            model_path=resolved_model_path,
+            model_path_signature=build_model_path_signature(str(resolved_model_path)),
             device=str(device or "auto"),
             visual_token_budget=int(visual_token_budget),
             output_language=output_language,
@@ -119,6 +129,7 @@ class GemmaShotAnalysisService:
             cache_key = build_resume_cache_key(
                 file_signature=build_file_signature(str(video_path)),
                 model_id=context.model_id,
+                model_path_signature=context.model_path_signature,
                 visual_token_budget=context.visual_token_budget,
                 prompt_version=PROMPT_VERSION,
             )
@@ -128,53 +139,52 @@ class GemmaShotAnalysisService:
                 self._log(f"Using cached result for {video_path.name}: {cached_record.status}")
                 continue
 
-            record: VideoDescriptionRecord
             try:
                 metadata = self._metadata_probe(str(video_path))
                 frame_samples = self._frame_sampler(str(video_path), metadata)
                 if not frame_samples:
                     raise RuntimeError("No keyframes could be sampled from the video.")
-
-                if backend is None:
-                    backend = self._backend_factory(
-                        context.model_id,
-                        context.device,
-                        context.visual_token_budget,
-                    )
-
-                raw_description = backend.describe_video(
-                    video_path=video_path,
-                    metadata=metadata,
-                    frame_samples=frame_samples,
-                    output_language=context.output_language,
-                )
-                try:
-                    description = self._validate_description(raw_description)
-                except Exception as validation_error:
-                    repaired_description = backend.repair_description(
-                        invalid_output=raw_description,
-                        error=validation_error,
-                        output_language=context.output_language,
-                    )
-                    description = self._validate_description(repaired_description)
-
-                warnings = self._build_video_warnings(metadata, frame_samples)
-                record = VideoDescriptionRecord(
-                    source_video_path=str(video_path),
-                    filename=video_path.name,
-                    status="completed",
-                    metadata=metadata,
-                    keyframes=tuple(sample.keyframe for sample in frame_samples),
-                    description=description,
-                    warnings=tuple(warnings),
-                    cache_key=cache_key,
-                )
             except Exception as exc:
                 self._log(f"Skipping {video_path.name}: {exc}")
-                record = self._build_failed_record(video_path, cache_key, exc)
+                records.append(self._build_failed_record(video_path, cache_key, exc))
+                continue
 
-            if record.status == "completed":
-                self._cache.save(cache_key, record)
+            if backend is None:
+                backend = self._backend_factory(
+                    context.model_id,
+                    context.model_path,
+                    context.device,
+                    context.visual_token_budget,
+                )
+
+            raw_description = backend.describe_video(
+                video_path=video_path,
+                metadata=metadata,
+                frame_samples=frame_samples,
+                output_language=context.output_language,
+            )
+            try:
+                description = self._validate_description(raw_description)
+            except Exception as validation_error:
+                repaired_description = backend.repair_description(
+                    invalid_output=raw_description,
+                    error=validation_error,
+                    output_language=context.output_language,
+                )
+                description = self._validate_description(repaired_description)
+
+            warnings = self._build_video_warnings(metadata, frame_samples)
+            record = VideoDescriptionRecord(
+                source_video_path=str(video_path),
+                filename=video_path.name,
+                status="completed",
+                metadata=metadata,
+                keyframes=tuple(sample.keyframe for sample in frame_samples),
+                description=description,
+                warnings=tuple(warnings),
+                cache_key=cache_key,
+            )
+            self._cache.save(cache_key, record)
             records.append(record)
 
         errors = tuple(record.to_error_payload() for record in records if record.status != "completed")
@@ -190,17 +200,20 @@ class GemmaShotAnalysisService:
                 "device": context.device,
                 "output_language": context.output_language,
                 "folder_traversal": "flat_sorted",
+                "model_path": str(context.model_path),
             },
         )
 
     def _default_backend_factory(
         self,
         model_id: str,
+        model_path: Path,
         device: str,
         visual_token_budget: int,
     ) -> GemmaDescriptionBackend:
         return Gemma4LocalBackend(
             model_id=model_id,
+            model_path=model_path,
             device=device,
             visual_token_budget=visual_token_budget,
             prompt_version=PROMPT_VERSION,

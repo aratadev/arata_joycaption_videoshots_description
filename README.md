@@ -18,7 +18,41 @@ Folder processing is flat and sorted by filename. Nested folders are not travers
 
 ## Gemma 4 Backend
 
-The node uses local Hugging Face Transformers inference. The default model id is `google/gemma-4-E4B-it`. The backend prefers the Gemma 4 multimodal model class and falls back only to compatible image-text classes. Large Gemma 4 variants may require substantial VRAM; use a smaller model or quantized environment if needed.
+The node uses local Hugging Face Transformers inference. The default model id is `google/gemma-4-E4B-it`, and the default local model path is `gemma/google-gemma-4-E4B-it` under `ComfyUI/models`. Absolute `model_path` values are used as-is; relative values are resolved from `ComfyUI/models`. Outside ComfyUI, relative paths resolve from this package's local `models` folder.
+
+The backend loads with `local_files_only=True`, so it will not silently download the model during analysis. Download the files before running the node:
+
+```bash
+export COMFYUI_DIR="/path/to/ComfyUI"
+export MODEL_DIR="$COMFYUI_DIR/models/gemma/google-gemma-4-E4B-it"
+# If Hugging Face requires authorization:
+# export HF_TOKEN="hf_..."
+
+mkdir -p "$MODEL_DIR"
+
+for f in \
+  chat_template.jinja \
+  config.json \
+  generation_config.json \
+  model.safetensors \
+  processor_config.json \
+  tokenizer.json \
+  tokenizer_config.json
+do
+  if [ -n "${HF_TOKEN:-}" ]; then
+    wget -c --show-progress \
+      --header="Authorization: Bearer ${HF_TOKEN}" \
+      -O "$MODEL_DIR/$f" \
+      "https://huggingface.co/google/gemma-4-E4B-it/resolve/main/$f?download=true"
+  else
+    wget -c --show-progress \
+      -O "$MODEL_DIR/$f" \
+      "https://huggingface.co/google/gemma-4-E4B-it/resolve/main/$f?download=true"
+  fi
+done
+```
+
+The backend prefers the Gemma 4 multimodal model class and falls back only to compatible image-text classes. Large Gemma 4 variants may require substantial VRAM; use a smaller model or quantized environment if needed.
 
 Video is processed as an ordered sequence of sampled frames:
 
@@ -77,7 +111,7 @@ The export node writes a UTF-8 JSON file under `output/arata_gemma_shots` by def
 }
 ```
 
-The node caches per-video results under the ComfyUI output cache. Re-running the same folder reuses completed cached records when the source file signature, model id, visual token budget, and prompt version match. Failed records are reported in the current run but are not cached, so transient model or dependency failures are retried on the next run.
+The node caches per-video results under the ComfyUI output cache. Re-running the same folder reuses completed cached records when the source file signature, model id, local model path signature, visual token budget, and prompt version match. Failed video records are reported in the current run but are not cached. Local model setup, dependency, device, and inference failures stop the workflow instead of being reported as damaged video files.
 
 ## Manual Smoke Test
 

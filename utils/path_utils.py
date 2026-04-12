@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from .comfy_paths import get_annotated_filepath, get_input_directory
+from .comfy_paths import get_annotated_filepath, get_input_directory, get_models_directory
 
 VIDEO_EXTENSIONS = {
     ".mp4",
@@ -18,6 +18,16 @@ VIDEO_EXTENSIONS = {
     ".mpeg",
     ".wmv",
 }
+
+GEMMA_MODEL_SIGNATURE_FILES = (
+    "chat_template.jinja",
+    "config.json",
+    "generation_config.json",
+    "model.safetensors",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+)
 
 _INVALID_PATH_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -103,9 +113,37 @@ def build_source_signature(path_text: str) -> str:
     return str(resolved)
 
 
+def resolve_model_path(path_text: str) -> Path:
+    candidate_text = str(path_text or "").strip()
+    if not candidate_text:
+        raise ValueError("Model path is empty.")
+
+    candidate = Path(candidate_text).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve(strict=False)
+    return (get_models_directory() / candidate).resolve(strict=False)
+
+
+def build_model_path_signature(path_text: str) -> str:
+    try:
+        resolved = resolve_model_path(path_text)
+    except Exception:
+        return str(path_text or "")
+
+    if not resolved.is_dir():
+        return str(resolved)
+
+    signatures = [
+        {"name": name, "signature": build_file_signature(str(resolved / name))}
+        for name in GEMMA_MODEL_SIGNATURE_FILES
+    ]
+    return _sha256_json({"type": "model_dir", "path": str(resolved), "files": signatures})
+
+
 def build_resume_cache_key(
     file_signature: str,
     model_id: str,
+    model_path_signature: str,
     visual_token_budget: int,
     prompt_version: str,
 ) -> str:
@@ -113,6 +151,7 @@ def build_resume_cache_key(
         {
             "file_signature": file_signature,
             "model_id": model_id,
+            "model_path_signature": model_path_signature,
             "visual_token_budget": int(visual_token_budget),
             "prompt_version": prompt_version,
         }

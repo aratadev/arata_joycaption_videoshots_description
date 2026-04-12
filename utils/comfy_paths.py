@@ -22,6 +22,14 @@ def get_output_directory() -> Path:
     return _PACKAGE_ROOT / "output"
 
 
+def get_models_directory() -> Path:
+    if folder_paths is not None:
+        models_dir = getattr(folder_paths, "models_dir", None)
+        if models_dir:
+            return Path(models_dir)
+    return _PACKAGE_ROOT / "models"
+
+
 def get_annotated_filepath(path_text: str) -> str | None:
     if folder_paths is None or not hasattr(folder_paths, "get_annotated_filepath"):
         return None

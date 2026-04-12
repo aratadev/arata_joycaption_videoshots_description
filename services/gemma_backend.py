@@ -39,16 +39,29 @@ SHOT_DESCRIPTION_TOOL = {
     },
 }
 
+GEMMA_4_WGET_INSTALL_HINT = (
+    'Install it with: export COMFYUI_DIR="/path/to/ComfyUI"; '
+    'export MODEL_DIR="$COMFYUI_DIR/models/gemma/google-gemma-4-E4B-it"; '
+    'mkdir -p "$MODEL_DIR"; '
+    'for f in chat_template.jinja config.json generation_config.json model.safetensors '
+    'processor_config.json tokenizer.json tokenizer_config.json; do '
+    'wget -c --show-progress -O "$MODEL_DIR/$f" '
+    '"https://huggingface.co/google/gemma-4-E4B-it/resolve/main/$f?download=true"; done. '
+    "If Hugging Face requires authorization, add an Authorization bearer header or see README.md."
+)
+
 
 class Gemma4LocalBackend:
     def __init__(
         self,
         model_id: str,
+        model_path: Path,
         device: str,
         visual_token_budget: int,
         prompt_version: str,
     ) -> None:
         self.model_id = model_id
+        self.model_path = Path(model_path)
         self.device = str(device or "auto").lower()
         self.visual_token_budget = int(visual_token_budget)
         self.prompt_version = prompt_version
@@ -146,6 +159,8 @@ must be in {output_language}.
         if self._processor is not None and self._model is not None:
             return
 
+        self._validate_local_model_path()
+
         try:
             import torch
             from transformers import AutoProcessor
@@ -161,17 +176,45 @@ must be in {output_language}.
         if torch.cuda.is_available() or getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             dtype = torch.bfloat16
 
-        self._processor = AutoProcessor.from_pretrained(self.model_id, padding_side="left")
+        model_path_text = str(self.model_path)
+        self._processor = AutoProcessor.from_pretrained(
+            model_path_text,
+            padding_side="left",
+            local_files_only=True,
+        )
         self._set_processor_visual_budget(self._processor)
         model_kwargs: dict[str, Any] = {"dtype": dtype}
         if self.device in {"auto", "cuda"}:
             model_kwargs["device_map"] = "auto"
 
-        self._model = model_cls.from_pretrained(self.model_id, **model_kwargs)
+        self._model = model_cls.from_pretrained(model_path_text, local_files_only=True, **model_kwargs)
         if self.device in {"cpu", "mps"} and hasattr(self._model, "to"):
             self._model.to(self.device)
         if hasattr(self._model, "eval"):
             self._model.eval()
+
+    def _validate_local_model_path(self) -> None:
+        required_files = (
+            "chat_template.jinja",
+            "config.json",
+            "model.safetensors",
+            "processor_config.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+        )
+        if not self.model_path.is_dir():
+            raise RuntimeError(
+                f"Gemma 4 model folder not found: {self.model_path}. "
+                + GEMMA_4_WGET_INSTALL_HINT
+            )
+
+        missing = [name for name in required_files if not (self.model_path / name).is_file()]
+        if missing:
+            raise RuntimeError(
+                f"Gemma 4 model folder is incomplete: {self.model_path}. "
+                f"Missing files: {', '.join(missing)}. "
+                + GEMMA_4_WGET_INSTALL_HINT
+            )
 
     def _set_processor_visual_budget(self, processor: Any) -> None:
         for component_name in ("image_processor", "video_processor"):
