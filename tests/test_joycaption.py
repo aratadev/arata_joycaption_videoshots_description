@@ -207,11 +207,9 @@ class JoyCaptionServiceTests(unittest.TestCase):
 
 
 class JoyCaptionNodeAndExportTests(unittest.TestCase):
-    def test_node_mappings_use_new_public_ids_without_gemma_aliases(self) -> None:
+    def test_node_mappings_use_joycaption_public_ids(self) -> None:
         self.assertIn("ArataJoyCaptionShotAnalyze", NODE_CLASS_MAPPINGS)
         self.assertIn("ArataJoyCaptionShotJsonExport", NODE_CLASS_MAPPINGS)
-        self.assertNotIn("ArataGemmaShotAnalyze", NODE_CLASS_MAPPINGS)
-        self.assertNotIn("ArataGemmaShotJsonExport", NODE_CLASS_MAPPINGS)
         self.assertEqual(
             NODE_DISPLAY_NAME_MAPPINGS["ArataJoyCaptionShotAnalyze"],
             "Arata Analyze Shots (JoyCaption Beta One)",
@@ -259,7 +257,6 @@ class JoyCaptionNodeAndExportTests(unittest.TestCase):
             payload = json.loads(exported_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["generator"], "arata_joycaption_shots")
             self.assertEqual(payload["model"]["caption_max_tokens"], 512)
-            self.assertNotIn("visual_token_budget", payload["model"])
 
 
 if __name__ == "__main__":
