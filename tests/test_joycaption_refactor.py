@@ -12,28 +12,28 @@ PARENT_ROOT = PACKAGE_ROOT.parent
 if str(PARENT_ROOT) not in sys.path:
     sys.path.insert(0, str(PARENT_ROOT))
 
-from arata_gemma_videoshots_description.nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
-from arata_gemma_videoshots_description.nodes.analyze_shots import ArataJoyCaptionShotAnalyze
-from arata_gemma_videoshots_description.nodes.export_json import ArataJoyCaptionShotJsonExport
-from arata_gemma_videoshots_description.services.export_service import JoyCaptionShotJsonExportService
-from arata_gemma_videoshots_description.services.joycaption_analysis_service import (
+from arata_joycaption_videoshots_description.nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+from arata_joycaption_videoshots_description.nodes.analyze_shots import ArataJoyCaptionShotAnalyze
+from arata_joycaption_videoshots_description.nodes.export_json import ArataJoyCaptionShotJsonExport
+from arata_joycaption_videoshots_description.services.export_service import JoyCaptionShotJsonExportService
+from arata_joycaption_videoshots_description.services.joycaption_analysis_service import (
     DEFAULT_JOYCAPTION_MODEL_ID,
     DEFAULT_JOYCAPTION_MODEL_PATH,
     PROMPT_VERSION,
     JoyCaptionShotAnalysisService,
 )
-from arata_gemma_videoshots_description.services.joycaption_backend import (
+from arata_joycaption_videoshots_description.services.joycaption_backend import (
     DESCRIPTION_FIELDS,
     JOYCAPTION_REQUIRED_FILES,
     JoyCaptionLocalBackend,
 )
-from arata_gemma_videoshots_description.utils.models import (
+from arata_joycaption_videoshots_description.utils.models import (
     JoyCaptionShotDescriptionResult,
     SampledKeyframe,
     VideoDescriptionRecord,
     VideoMetadata,
 )
-from arata_gemma_videoshots_description.utils.video_sampling import VideoFrameSample
+from arata_joycaption_videoshots_description.utils.video_sampling import VideoFrameSample
 
 
 VALID_DESCRIPTION = {
