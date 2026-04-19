@@ -105,16 +105,16 @@ class VideoDescriptionRecord:
 
 
 @dataclass(frozen=True)
-class GemmaShotDescriptionResult:
+class JoyCaptionShotDescriptionResult:
     source_path: str
     generated_at: str
     model_id: str
-    visual_token_budget: int
+    caption_max_tokens: int
     prompt_version: str
     videos: tuple[VideoDescriptionRecord, ...]
     errors: tuple[dict[str, Any], ...] = ()
     version: int = 1
-    generator: str = "arata_gemma_shots"
+    generator: str = "arata_joycaption_shots"
     parameters: dict[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
@@ -125,7 +125,7 @@ class GemmaShotDescriptionResult:
             "source_path": self.source_path,
             "model": {
                 "id": self.model_id,
-                "visual_token_budget": self.visual_token_budget,
+                "caption_max_tokens": self.caption_max_tokens,
             },
             "prompt_version": self.prompt_version,
             "parameters": self.parameters,
@@ -151,7 +151,7 @@ class ExportedFile:
 
 
 @dataclass(frozen=True)
-class GemmaJsonExportResult:
+class JoyCaptionJsonExportResult:
     descriptions_file: ExportedFile
 
 

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..utils.comfy_paths import get_output_directory
-from ..utils.models import ExportedFile, GemmaJsonExportResult, GemmaShotDescriptionResult
+from ..utils.models import ExportedFile, JoyCaptionJsonExportResult, JoyCaptionShotDescriptionResult
 from ..utils.path_utils import (
     build_output_filename_stem,
     ensure_directory,
@@ -14,25 +14,25 @@ from ..utils.path_utils import (
 )
 
 
-class GemmaShotJsonExportService:
+class JoyCaptionShotJsonExportService:
     def __init__(self, output_root: Path | None = None) -> None:
         self._output_root = Path(output_root) if output_root is not None else None
 
     def export(
         self,
-        shot_descriptions: GemmaShotDescriptionResult,
+        shot_descriptions: JoyCaptionShotDescriptionResult,
         output_subdirectory: str,
         filename_stem: str,
         overwrite_existing: bool,
-    ) -> GemmaJsonExportResult:
+    ) -> JoyCaptionJsonExportResult:
         output_root = self._output_root or get_output_directory()
         export_dir = ensure_directory(output_root / normalize_output_subdirectory(output_subdirectory))
-        stem = build_output_filename_stem(shot_descriptions.source_path, filename_stem, fallback="gemma_shots")
+        stem = build_output_filename_stem(shot_descriptions.source_path, filename_stem, fallback="joycaption_shots")
 
-        descriptions_path = make_unique_path(export_dir / f"{stem}_gemma_shots.json", overwrite_existing)
+        descriptions_path = make_unique_path(export_dir / f"{stem}_joycaption_shots.json", overwrite_existing)
         descriptions_path.write_text(self._format_description_file(shot_descriptions), encoding="utf-8")
 
-        return GemmaJsonExportResult(
+        return JoyCaptionJsonExportResult(
             descriptions_file=self._build_exported_file("descriptions", descriptions_path, output_root),
         )
 
@@ -45,7 +45,7 @@ class GemmaShotJsonExportService:
             filename=file_path.name,
         )
 
-    def _format_description_file(self, shot_descriptions: GemmaShotDescriptionResult) -> str:
+    def _format_description_file(self, shot_descriptions: JoyCaptionShotDescriptionResult) -> str:
         payload = shot_descriptions.to_payload()
         payload["exported_at"] = datetime.now(timezone.utc).isoformat()
         return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"

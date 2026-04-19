@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from ..services.gemma_analysis_service import (
-    DEFAULT_GEMMA_4_MODEL_PATH,
-    GEMMA_4_MODEL_IDS,
+from ..services.joycaption_analysis_service import (
+    DEFAULT_JOYCAPTION_MODEL_PATH,
+    JOYCAPTION_MODEL_IDS,
     PROMPT_VERSION,
-    GemmaShotAnalysisService,
+    JoyCaptionShotAnalysisService,
 )
 from ..utils.path_utils import build_model_path_signature, build_source_signature
 
 
-class ArataGemmaShotAnalyze:
+class ArataJoyCaptionShotAnalyze:
     CATEGORY = "Arata/Video Analysis"
     FUNCTION = "analyze_shots"
-    RETURN_TYPES = ("ARATA_GEMMA_SHOT_DESCRIPTIONS",)
+    RETURN_TYPES = ("ARATA_JOYCAPTION_SHOT_DESCRIPTIONS",)
     RETURN_NAMES = ("shot_descriptions",)
 
     @classmethod
@@ -20,10 +20,10 @@ class ArataGemmaShotAnalyze:
         return {
             "required": {
                 "source_path": ("STRING", {"default": ""}),
-                "model_id": (GEMMA_4_MODEL_IDS, {"default": "google/gemma-4-E4B-it"}),
-                "model_path": ("STRING", {"default": DEFAULT_GEMMA_4_MODEL_PATH}),
+                "model_id": (JOYCAPTION_MODEL_IDS, {"default": "fancyfeast/llama-joycaption-beta-one-hf-llava"}),
+                "model_path": ("STRING", {"default": DEFAULT_JOYCAPTION_MODEL_PATH}),
                 "device": (["auto", "cuda", "mps", "cpu"], {"default": "auto"}),
-                "visual_token_budget": (["70", "140", "280", "560", "1120"], {"default": "140"}),
+                "caption_max_tokens": (["128", "256", "512", "768", "1024"], {"default": "512"}),
             }
         }
 
@@ -32,16 +32,16 @@ class ArataGemmaShotAnalyze:
         cls,
         source_path: str,
         model_id: str = "",
-        model_path: str = DEFAULT_GEMMA_4_MODEL_PATH,
-        visual_token_budget: str = "140",
+        model_path: str = DEFAULT_JOYCAPTION_MODEL_PATH,
+        caption_max_tokens: str = "512",
         **_: object,
     ) -> str:
         return ":".join(
             [
                 build_source_signature(source_path),
                 str(model_id or ""),
-                build_model_path_signature(model_path or DEFAULT_GEMMA_4_MODEL_PATH),
-                str(visual_token_budget or ""),
+                build_model_path_signature(model_path or DEFAULT_JOYCAPTION_MODEL_PATH),
+                str(caption_max_tokens or ""),
                 PROMPT_VERSION,
             ]
         )
@@ -52,14 +52,14 @@ class ArataGemmaShotAnalyze:
         model_id: str,
         model_path: str,
         device: str,
-        visual_token_budget: str,
+        caption_max_tokens: str,
     ):
-        service = GemmaShotAnalysisService()
+        service = JoyCaptionShotAnalysisService()
         result = service.analyze(
             source_path=source_path,
             model_id=model_id,
             model_path=model_path,
             device=device,
-            visual_token_budget=int(visual_token_budget),
+            caption_max_tokens=int(caption_max_tokens),
         )
         return (result,)

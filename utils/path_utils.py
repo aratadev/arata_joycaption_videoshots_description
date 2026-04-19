@@ -19,12 +19,14 @@ VIDEO_EXTENSIONS = {
     ".wmv",
 }
 
-GEMMA_MODEL_SIGNATURE_FILES = (
-    "chat_template.jinja",
+JOYCAPTION_MODEL_SIGNATURE_FILES = (
+    "chat_template.json",
     "config.json",
     "generation_config.json",
-    "model.safetensors",
+    "model.safetensors.index.json",
+    "preprocessor_config.json",
     "processor_config.json",
+    "special_tokens_map.json",
     "tokenizer.json",
     "tokenizer_config.json",
 )
@@ -133,10 +135,11 @@ def build_model_path_signature(path_text: str) -> str:
     if not resolved.is_dir():
         return str(resolved)
 
-    signatures = [
-        {"name": name, "signature": build_file_signature(str(resolved / name))}
-        for name in GEMMA_MODEL_SIGNATURE_FILES
-    ]
+    signatures = []
+    for name in JOYCAPTION_MODEL_SIGNATURE_FILES:
+        signatures.append({"name": name, "signature": build_file_signature(str(resolved / name))})
+    for shard_path in sorted(resolved.glob("model*.safetensors"), key=lambda path: path.name):
+        signatures.append({"name": shard_path.name, "signature": build_file_signature(str(shard_path))})
     return _sha256_json({"type": "model_dir", "path": str(resolved), "files": signatures})
 
 
@@ -144,7 +147,7 @@ def build_resume_cache_key(
     file_signature: str,
     model_id: str,
     model_path_signature: str,
-    visual_token_budget: int,
+    caption_max_tokens: int,
     prompt_version: str,
 ) -> str:
     return _sha256_json(
@@ -152,7 +155,7 @@ def build_resume_cache_key(
             "file_signature": file_signature,
             "model_id": model_id,
             "model_path_signature": model_path_signature,
-            "visual_token_budget": int(visual_token_budget),
+            "caption_max_tokens": int(caption_max_tokens),
             "prompt_version": prompt_version,
         }
     )
@@ -161,7 +164,7 @@ def build_resume_cache_key(
 def normalize_output_subdirectory(subdirectory: str) -> Path:
     raw_value = str(subdirectory or "").strip().replace("\\", "/").strip("/")
     if not raw_value:
-        return Path("arata_gemma_shots")
+        return Path("arata_joycaption_shots")
 
     parts: list[str] = []
     for raw_part in raw_value.split("/"):
@@ -173,11 +176,11 @@ def normalize_output_subdirectory(subdirectory: str) -> Path:
         parts.append(sanitize_path_component(part))
 
     if not parts:
-        return Path("arata_gemma_shots")
+        return Path("arata_joycaption_shots")
     return Path(*parts)
 
 
-def build_output_filename_stem(source_path: str, filename_stem: str, fallback: str = "gemma_shots") -> str:
+def build_output_filename_stem(source_path: str, filename_stem: str, fallback: str = "joycaption_shots") -> str:
     explicit_stem = sanitize_filename_stem(filename_stem)
     if explicit_stem:
         return explicit_stem

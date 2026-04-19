@@ -21,7 +21,7 @@ def register_download_routes() -> None:
 
     routes = PromptServer.instance.routes
 
-    @routes.get("/arata-gemma-shots/download")
+    @routes.get("/arata-joycaption-shots/download")
     async def download_description_file(request):
         relative_path = str(request.query.get("path", "")).strip()
         if not relative_path:

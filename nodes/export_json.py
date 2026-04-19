@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from ..services.export_service import GemmaShotJsonExportService
+from ..services.export_service import JoyCaptionShotJsonExportService
 
 
-class ArataGemmaShotJsonExport:
+class ArataJoyCaptionShotJsonExport:
     CATEGORY = "Arata/Video Analysis"
     FUNCTION = "export_file"
     OUTPUT_NODE = True
@@ -14,8 +14,8 @@ class ArataGemmaShotJsonExport:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "shot_descriptions": ("ARATA_GEMMA_SHOT_DESCRIPTIONS",),
-                "output_subdirectory": ("STRING", {"default": "arata_gemma_shots"}),
+                "shot_descriptions": ("ARATA_JOYCAPTION_SHOT_DESCRIPTIONS",),
+                "output_subdirectory": ("STRING", {"default": "arata_joycaption_shots"}),
                 "filename_stem": ("STRING", {"default": ""}),
                 "overwrite_existing": ("BOOLEAN", {"default": False}),
             }
@@ -28,7 +28,7 @@ class ArataGemmaShotJsonExport:
         filename_stem: str,
         overwrite_existing: bool,
     ):
-        service = GemmaShotJsonExportService()
+        service = JoyCaptionShotJsonExportService()
         export_result = service.export(
             shot_descriptions=shot_descriptions,
             output_subdirectory=output_subdirectory,

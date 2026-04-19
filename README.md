@@ -1,58 +1,46 @@
-# Arata Gemma Video Shot Descriptions
+# Arata JoyCaption Video Shot Descriptions
 
-ComfyUI custom nodes for analyzing short video shots with local Gemma 4 and exporting one consolidated JSON description file.
+ComfyUI custom nodes for analyzing short video shots with local JoyCaption Beta One and exporting one consolidated JSON description file.
 
 ## Nodes
 
-- `Arata Analyze Shots (Gemma 4)`
-- `Arata Export Gemma Shot JSON`
+- `Arata Analyze Shots (JoyCaption Beta One)`
+- `Arata Export JoyCaption Shot JSON`
 
 ## Workflow Shape
 
 1. Put video shots in ComfyUI input, or provide an absolute path to a single video file or a folder of video files.
-2. Feed `source_path` into `Arata Analyze Shots (Gemma 4)`.
-3. Connect `shot_descriptions` into `Arata Export Gemma Shot JSON`.
+2. Feed `source_path` into `Arata Analyze Shots (JoyCaption Beta One)`.
+3. Connect `shot_descriptions` into `Arata Export JoyCaption Shot JSON`.
 4. Run the workflow and use the export node download button to fetch the generated `.json` file.
 
 Folder processing is flat and sorted by filename. Nested folders are not traversed.
 
-## Gemma 4 Backend
+## JoyCaption Beta One Backend
 
-The node uses local Hugging Face Transformers inference. The default model id is `google/gemma-4-E4B-it`, and the default local model path is `gemma/google-gemma-4-E4B-it` under `ComfyUI/models`. Absolute `model_path` values are used as-is; relative values are resolved from `ComfyUI/models`. Outside ComfyUI, relative paths resolve from this package's local `models` folder.
+The node uses local Hugging Face Transformers inference. The default model id is `fancyfeast/llama-joycaption-beta-one-hf-llava`, and the default local model path is `joycaption/fancyfeast-llama-joycaption-beta-one-hf-llava` under `ComfyUI/models`. Absolute `model_path` values are used as-is; relative values are resolved from `ComfyUI/models`. Outside ComfyUI, relative paths resolve from this package's local `models` folder.
 
 The backend loads with `local_files_only=True`, so it will not silently download the model during analysis. Download the files before running the node:
 
 ```bash
 export COMFYUI_DIR="/path/to/ComfyUI"
-export MODEL_DIR="$COMFYUI_DIR/models/gemma/google-gemma-4-E4B-it"
+export MODEL_DIR="$COMFYUI_DIR/models/joycaption/fancyfeast-llama-joycaption-beta-one-hf-llava"
+
 # If Hugging Face requires authorization:
-# export HF_TOKEN="hf_..."
+# huggingface-cli login
 
 mkdir -p "$MODEL_DIR"
-
-for f in \
-  chat_template.jinja \
-  config.json \
-  generation_config.json \
-  model.safetensors \
-  processor_config.json \
-  tokenizer.json \
-  tokenizer_config.json
-do
-  if [ -n "${HF_TOKEN:-}" ]; then
-    wget -c --show-progress \
-      --header="Authorization: Bearer ${HF_TOKEN}" \
-      -O "$MODEL_DIR/$f" \
-      "https://huggingface.co/google/gemma-4-E4B-it/resolve/main/$f?download=true"
-  else
-    wget -c --show-progress \
-      -O "$MODEL_DIR/$f" \
-      "https://huggingface.co/google/gemma-4-E4B-it/resolve/main/$f?download=true"
-  fi
-done
+huggingface-cli download fancyfeast/llama-joycaption-beta-one-hf-llava \
+  --local-dir "$MODEL_DIR" \
+  --local-dir-use-symlinks False
 ```
 
-The backend prefers the Gemma 4 multimodal model class and falls back only to compatible image-text classes. Large Gemma 4 variants may require substantial VRAM; use a smaller model or quantized environment if needed.
+JoyCaption Beta One is a LLaVA-style single-image captioning model. The model card recommends `AutoProcessor` with `LlavaForConditionalGeneration`, and the upstream README warns that Beta One is not a fully reliable general instruction follower. This node keeps the existing video sampling architecture but runs JoyCaption per sampled frame, then tries a second text-only pass to synthesize the final shot JSON. If that pass is unsupported or returns invalid JSON, the node builds a deterministic fallback JSON from the frame captions.
+
+References:
+
+- [JoyCaption Beta One model card](https://huggingface.co/fancyfeast/llama-joycaption-beta-one-hf-llava)
+- [JoyCaption README](https://github.com/fpgaminer/joycaption)
 
 Video is processed as an ordered sequence of sampled frames:
 
@@ -60,22 +48,20 @@ Video is processed as an ordered sequence of sampled frames:
 - A hard cap of 60 sampled frames.
 - Longer clips are sampled evenly across the full duration and marked with a warning.
 
-The default visual token budget is `140`, which favors faster video-style analysis. Available budgets are `70`, `140`, `280`, `560`, and `1120`.
-
-The prompt requests the `save_shot_description` tool schema when the installed Transformers/Gemma 4 stack supports tool calls, then still validates the returned fields and falls back to strict JSON parsing and one repair pass.
+The default `caption_max_tokens` is `512`. Available values are `128`, `256`, `512`, `768`, and `1024`.
 
 ## Output Format
 
-The export node writes a UTF-8 JSON file under `output/arata_gemma_shots` by default:
+The export node writes a UTF-8 JSON file under `output/arata_joycaption_shots` by default:
 
 ```json
 {
   "version": 1,
-  "generator": "arata_gemma_shots",
+  "generator": "arata_joycaption_shots",
   "source_path": "/path/to/shots",
   "model": {
-    "id": "google/gemma-4-E4B-it",
-    "visual_token_budget": 140
+    "id": "fancyfeast/llama-joycaption-beta-one-hf-llava",
+    "caption_max_tokens": 512
   },
   "videos": [
     {
@@ -111,8 +97,10 @@ The export node writes a UTF-8 JSON file under `output/arata_gemma_shots` by def
 }
 ```
 
-The node caches per-video results under the ComfyUI output cache. Re-running the same folder reuses completed cached records when the source file signature, model id, local model path signature, visual token budget, and prompt version match. Failed video records are reported in the current run but are not cached. Local model setup, dependency, device, and inference failures stop the workflow instead of being reported as damaged video files.
+The node caches per-video results under the ComfyUI output cache. Re-running the same folder reuses completed cached records when the source file signature, model id, local model path signature, caption token limit, and prompt version match. Failed video records are reported in the current run but are not cached. Local model setup, dependency, device, and inference failures stop the workflow instead of being reported as damaged video files.
 
 ## Manual Smoke Test
 
-After installing requirements and model access, run ComfyUI, select a short shot, run the two-node workflow, and confirm that the export JSON contains Russian values under the expected fields.
+After installing requirements and the local JoyCaption model folder, run ComfyUI, select a short shot, run the two-node workflow, and confirm that the export JSON contains Russian values under the expected fields.
+
+Known limitation: the second synthesis pass uses JoyCaption as a text-only LLM even though the model is primarily trained for image captioning. The deterministic fallback is intentionally retained so batch processing remains stable if that pass is weak or unavailable.

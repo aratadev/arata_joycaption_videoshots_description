@@ -1,6 +1,6 @@
 opencv-python-headless>=4.8
 torch>=2.2
-transformers>=5.4
+transformers>=4.51
 torchvision>=0.17
 librosa>=0.10
 accelerate>=0.30

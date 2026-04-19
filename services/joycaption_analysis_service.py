@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from .gemma_backend import Gemma4LocalBackend
+from .joycaption_backend import DESCRIPTION_FIELDS, JOYCAPTION_MODEL_ID, JoyCaptionLocalBackend
 from ..utils.comfy_paths import get_output_directory
 from ..utils.models import (
-    GemmaShotDescriptionResult,
+    JoyCaptionShotDescriptionResult,
     VideoDescriptionRecord,
     VideoMetadata,
 )
@@ -25,32 +25,18 @@ from ..utils.path_utils import (
 from ..utils.video_metadata import probe_video_metadata
 from ..utils.video_sampling import VideoFrameSample, sample_video_frames
 
-PROMPT_VERSION = "gemma-shot-description-v1"
-DEFAULT_GEMMA_4_MODEL_ID = "google/gemma-4-E4B-it"
-DEFAULT_GEMMA_4_MODEL_PATH = "gemma/google-gemma-4-E4B-it"
+PROMPT_VERSION = "joycaption-shot-description-v1"
+DEFAULT_JOYCAPTION_MODEL_ID = JOYCAPTION_MODEL_ID
+DEFAULT_JOYCAPTION_MODEL_PATH = "joycaption/fancyfeast-llama-joycaption-beta-one-hf-llava"
 
-GEMMA_4_MODEL_IDS = [
-    DEFAULT_GEMMA_4_MODEL_ID,
-    "google/gemma-4-E2B-it",
-    "google/gemma-4-26B-A4B-it",
-    "google/gemma-4-31B-it",
+JOYCAPTION_MODEL_IDS = [
+    DEFAULT_JOYCAPTION_MODEL_ID,
 ]
-
-DESCRIPTION_FIELDS = (
-    "summary",
-    "actions",
-    "objects",
-    "environment",
-    "atmosphere",
-    "shot_scale",
-    "camera_motion",
-    "temporal_notes",
-)
 
 LIST_DESCRIPTION_FIELDS = {"actions", "objects", "temporal_notes"}
 
 
-class GemmaDescriptionBackend(Protocol):
+class JoyCaptionDescriptionBackend(Protocol):
     def describe_video(
         self,
         video_path: Path,
@@ -69,7 +55,7 @@ class GemmaDescriptionBackend(Protocol):
         ...
 
 
-BackendFactory = Callable[[str, Path, str, int], GemmaDescriptionBackend]
+BackendFactory = Callable[[str, Path, str, int], JoyCaptionDescriptionBackend]
 MetadataProbe = Callable[[str], VideoMetadata]
 FrameSampler = Callable[[str, VideoMetadata], tuple[VideoFrameSample, ...]]
 
@@ -81,11 +67,11 @@ class _ProcessContext:
     model_path: Path
     model_path_signature: str
     device: str
-    visual_token_budget: int
+    caption_max_tokens: int
     output_language: str
 
 
-class GemmaShotAnalysisService:
+class JoyCaptionShotAnalysisService:
     def __init__(
         self,
         backend_factory: BackendFactory | None = None,
@@ -96,32 +82,32 @@ class GemmaShotAnalysisService:
         self._backend_factory = backend_factory or self._default_backend_factory
         self._metadata_probe = metadata_probe
         self._frame_sampler = frame_sampler
-        self._cache = _ResumeCache(cache_dir or get_output_directory() / "cache" / "arata_gemma_shots")
+        self._cache = _ResumeCache(cache_dir or get_output_directory() / "cache" / "arata_joycaption_shots")
 
     def analyze(
         self,
         source_path: str,
         model_id: str,
         device: str,
-        visual_token_budget: int,
+        caption_max_tokens: int,
         output_language: str = "Russian",
-        model_path: str = DEFAULT_GEMMA_4_MODEL_PATH,
-    ) -> GemmaShotDescriptionResult:
+        model_path: str = DEFAULT_JOYCAPTION_MODEL_PATH,
+    ) -> JoyCaptionShotDescriptionResult:
         resolved_source = resolve_source_path(source_path)
         video_paths = discover_video_files(resolved_source)
-        resolved_model_path = resolve_model_path(model_path or DEFAULT_GEMMA_4_MODEL_PATH)
+        resolved_model_path = resolve_model_path(model_path or DEFAULT_JOYCAPTION_MODEL_PATH)
         context = _ProcessContext(
             source_path=resolved_source,
-            model_id=str(model_id or DEFAULT_GEMMA_4_MODEL_ID),
+            model_id=str(model_id or DEFAULT_JOYCAPTION_MODEL_ID),
             model_path=resolved_model_path,
             model_path_signature=build_model_path_signature(str(resolved_model_path)),
             device=str(device or "auto"),
-            visual_token_budget=int(visual_token_budget),
+            caption_max_tokens=int(caption_max_tokens),
             output_language=output_language,
         )
 
         self._log(f"Processing {len(video_paths)} video file(s) from {resolved_source}")
-        backend: GemmaDescriptionBackend | None = None
+        backend: JoyCaptionDescriptionBackend | None = None
         records: list[VideoDescriptionRecord] = []
 
         for index, video_path in enumerate(video_paths, start=1):
@@ -130,7 +116,7 @@ class GemmaShotAnalysisService:
                 file_signature=build_file_signature(str(video_path)),
                 model_id=context.model_id,
                 model_path_signature=context.model_path_signature,
-                visual_token_budget=context.visual_token_budget,
+                caption_max_tokens=context.caption_max_tokens,
                 prompt_version=PROMPT_VERSION,
             )
             cached_record = self._cache.load(cache_key)
@@ -154,7 +140,7 @@ class GemmaShotAnalysisService:
                     context.model_id,
                     context.model_path,
                     context.device,
-                    context.visual_token_budget,
+                    context.caption_max_tokens,
                 )
 
             raw_description = backend.describe_video(
@@ -188,11 +174,11 @@ class GemmaShotAnalysisService:
             records.append(record)
 
         errors = tuple(record.to_error_payload() for record in records if record.status != "completed")
-        return GemmaShotDescriptionResult(
+        return JoyCaptionShotDescriptionResult(
             source_path=str(resolved_source),
             generated_at=datetime.now(timezone.utc).isoformat(),
             model_id=context.model_id,
-            visual_token_budget=context.visual_token_budget,
+            caption_max_tokens=context.caption_max_tokens,
             prompt_version=PROMPT_VERSION,
             videos=tuple(records),
             errors=errors,
@@ -201,6 +187,8 @@ class GemmaShotAnalysisService:
                 "output_language": context.output_language,
                 "folder_traversal": "flat_sorted",
                 "model_path": str(context.model_path),
+                "frame_captioning": "per_keyframe",
+                "shot_synthesis": "joycaption_text_pass_with_deterministic_fallback",
             },
         )
 
@@ -209,13 +197,13 @@ class GemmaShotAnalysisService:
         model_id: str,
         model_path: Path,
         device: str,
-        visual_token_budget: int,
-    ) -> GemmaDescriptionBackend:
-        return Gemma4LocalBackend(
+        caption_max_tokens: int,
+    ) -> JoyCaptionDescriptionBackend:
+        return JoyCaptionLocalBackend(
             model_id=model_id,
             model_path=model_path,
             device=device,
-            visual_token_budget=visual_token_budget,
+            caption_max_tokens=caption_max_tokens,
             prompt_version=PROMPT_VERSION,
         )
 
@@ -227,7 +215,7 @@ class GemmaShotAnalysisService:
         warnings: list[str] = []
         if metadata.duration_sec and metadata.duration_sec > 60:
             warnings.append(
-                "Video is longer than the recommended ~60 seconds for one Gemma 4 video-style pass; "
+                "Video is longer than the recommended ~60 seconds for dense per-keyframe JoyCaption analysis; "
                 "60 frames were sampled evenly across the full duration."
             )
         if len(frame_samples) >= 60:
@@ -248,7 +236,7 @@ class GemmaShotAnalysisService:
         data = self._coerce_description_json(raw_description)
         missing = [field for field in DESCRIPTION_FIELDS if field not in data]
         if missing:
-            raise ValueError(f"Gemma response is missing required description fields: {', '.join(missing)}")
+            raise ValueError(f"JoyCaption response is missing required description fields: {', '.join(missing)}")
 
         normalized: dict[str, Any] = {}
         for field in DESCRIPTION_FIELDS:
@@ -263,7 +251,7 @@ class GemmaShotAnalysisService:
         if isinstance(raw_description, dict):
             return raw_description
         if not isinstance(raw_description, str):
-            raise TypeError(f"Gemma response must be a JSON object or string, got {type(raw_description).__name__}.")
+            raise TypeError(f"JoyCaption response must be a JSON object or string, got {type(raw_description).__name__}.")
         text = raw_description.strip()
         if text.startswith("```"):
             text = text.strip("`").strip()
@@ -275,7 +263,7 @@ class GemmaShotAnalysisService:
             text = text[start : end + 1]
         parsed = json.loads(text)
         if not isinstance(parsed, dict):
-            raise TypeError("Gemma response JSON must be an object.")
+            raise TypeError("JoyCaption response JSON must be an object.")
         return parsed
 
     def _coerce_string_list(self, value: Any, field: str) -> list[str]:
@@ -293,7 +281,7 @@ class GemmaShotAnalysisService:
         return str(value).strip()
 
     def _log(self, message: str) -> None:
-        print(f"[Arata Gemma Shots] {message}")
+        print(f"[Arata JoyCaption Shots] {message}")
 
 
 class _ResumeCache:
